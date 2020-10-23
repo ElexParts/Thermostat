@@ -29,7 +29,7 @@
 /************************* Adafruit.io Setup *********************************/
 
 #define AIO_SERVER      "io.adafruit.com"
-#define AIO_SERVERPORT  1883                   // use 8883 for SSL
+#define AIO_SERVERPORT  1883                    // use 8883 for SSL
 #define AIO_USERNAME    "...your AIO username (see https://accounts.adafruit.com)..."
 #define AIO_KEY         "...your AIO key..."
 
@@ -50,12 +50,14 @@ Adafruit_MQTT_Client mqtt(&client, AIO_SERVER, AIO_SERVERPORT, AIO_USERNAME, AIO
 
 /****************************** Feeds ***************************************/
 
-// Setup a feed called 'temperature' for publishing.
+// Setup feeds for publishing.
 // Notice MQTT paths for AIO follow the form: <username>/feeds/<feedname>
-Adafruit_MQTT_Publish temperature = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/temperature");
+Adafruit_MQTT_Publish temperature = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/room.temperature");
+Adafruit_MQTT_Publish humidity = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/room.humidity");
+Adafruit_MQTT_Publish fan_status = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/room.fan-status");
 
-// Setup a feed called 'onoff' for subscribing to changes.
-Adafruit_MQTT_Subscribe onoffbutton = Adafruit_MQTT_Subscribe(&mqtt, AIO_USERNAME "/feeds/onoff");
+// Setup feeds for subscribing to changes.
+Adafruit_MQTT_Subscribe fan_switch = Adafruit_MQTT_Subscribe(&mqtt, AIO_USERNAME "/feeds/room.fan-switch");
 
 /****************************** DHT Sensor **********************************/
 
@@ -92,14 +94,29 @@ void setup() {
   Serial.println("WiFi connected");
   Serial.println("IP address: "); Serial.println(WiFi.localIP());
 
-  // Setup MQTT subscription for onoff feed.
-  mqtt.subscribe(&onoffbutton);
+  // Setup MQTT subscription feeds.
+  mqtt.subscribe(&fan_switch);
 
   // Setup DHT Sensor.
   dht.begin();
 }
 
 void loop() {
+  // Ensure the connection to the MQTT server is alive (this will make the first
+  // connection and automatically reconnect when disconnected).  See the MQTT_connect
+  // function definition further below.
+  MQTT_connect();
+
+  // this is our 'wait for incoming subscription packets' busy subloop
+  // try to spend your time here
+
+  Adafruit_MQTT_Subscribe *subscription;
+  while ((subscription = mqtt.readSubscription(5000))) {
+    if (subscription == &fan_switch) {
+      fan_status.publish((char *)fan_switch.lastread);
+    }
+  }
+  
   // Get current time in milliseconds.
   unsigned long currentMillis = millis();
 
@@ -113,32 +130,21 @@ void loop() {
     temp = dht.readTemperature();
   }
 
-  Serial.print(F("Temperature: "));
-  Serial.println(temp);
-  Serial.print(F("Humidity: "));
-  Serial.println(hum);
-  
-  // Ensure the connection to the MQTT server is alive (this will make the first
-  // connection and automatically reconnect when disconnected).  See the MQTT_connect
-  // function definition further below.
-  MQTT_connect();
-
-  // this is our 'wait for incoming subscription packets' busy subloop
-  // try to spend your time here
-
-  Adafruit_MQTT_Subscribe *subscription;
-  while ((subscription = mqtt.readSubscription(5000))) {
-    if (subscription == &onoffbutton) {
-      Serial.print(F("Got: "));
-      Serial.println((char *)onoffbutton.lastread);
-    }
-  }
-
-  // Now we can publish stuff!
+  // Publish temperature value.
   Serial.print(F("\nSending temperature val "));
   Serial.print(temp);
   Serial.print("... ");
   if (! temperature.publish(temp)) {
+    Serial.println(F("Failed"));
+  } else {
+    Serial.println(F("OK!"));
+  }
+
+  // Publish humidity value.
+  Serial.print(F("\nSending humidity val "));
+  Serial.print(hum);
+  Serial.print("... ");
+  if (! humidity.publish(hum)) {
     Serial.println(F("Failed"));
   } else {
     Serial.println(F("OK!"));
