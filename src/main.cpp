@@ -23,15 +23,15 @@
 
 /************************* WiFi Access Point *********************************/
 
-#define WLAN_SSID       "...your SSID..."
-#define WLAN_PASS       "...your password..."
+#define WLAN_SSID       "STARGATE"
+#define WLAN_PASS       "SPACELINK239"
 
 /************************* Adafruit.io Setup *********************************/
 
-#define AIO_SERVER      "io.adafruit.com"
+#define AIO_SERVER      "192.168.1.4"
 #define AIO_SERVERPORT  1883                    // use 8883 for SSL
-#define AIO_USERNAME    "...your AIO username (see https://accounts.adafruit.com)..."
-#define AIO_KEY         "...your AIO key..."
+#define AIO_USERNAME    "admin"
+#define AIO_KEY         "admin"
 
 /****************************** DHT Setup ************************************/
 
@@ -70,8 +70,6 @@ const long interval = 2000;
 /****************************** Fan *****************************************/
 
 const int fanOutputPin = 0;
-const int sensorPin = A0;
-int sensorValue = 0;
 
 /*************************** Sketch Code ************************************/
 
@@ -136,10 +134,6 @@ void loop() {
       }
     }
   }
-
-  sensorValue = analogRead(sensorPin);
-  Serial.print(F("\nSensor value "));
-  Serial.println(sensorValue);
   
   // Get current time in milliseconds.
   unsigned long currentMillis = millis();
@@ -154,21 +148,28 @@ void loop() {
     temp = dht.readTemperature();
   }
 
-  // Publish temperature value.
-  Serial.print(F("\nSending temperature val "));
-  Serial.print(temp);
-  Serial.print("... ");
-  if (! temperature.publish(temp)) {
-    Serial.println(F("Failed"));
-  } else {
-    Serial.println(F("OK!"));
-  }
+  // Publish sensor value.
+  Serial.print(F("\nSending sensor val "));
+  char payload[64] = "";
+  strcat(payload, "20;02;DKW2012;");
 
-  // Publish humidity value.
-  Serial.print(F("\nSending humidity val "));
-  Serial.print(hum);
+  // Convert temperature and add to payload.
+  char temp_value[32];
+  snprintf(temp_value, sizeof temp_value, "%f", temp);
+  strcat(payload, "TEMP=");
+  strcat(payload, temp_value);
+  strcat(payload, ";");
+
+  // Convert humidity and add to payload.
+  char hum_value[32];
+  snprintf(hum_value, sizeof hum_value, "%f", hum);
+  strcat(payload, "HUM=");
+  strcat(payload, hum_value);
+  strcat(payload, ";");
+
+  Serial.print(payload);
   Serial.print("... ");
-  if (! humidity.publish(hum)) {
+  if (! temperature.publish(payload)) {
     Serial.println(F("Failed"));
   } else {
     Serial.println(F("OK!"));
