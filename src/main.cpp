@@ -26,7 +26,7 @@
 #define WLAN_SSID       "STARGATE"
 #define WLAN_PASS       "SPACELINK239"
 
-/************************* Adafruit.io Setup *********************************/
+/************************* MQTT Setup *********************************/
 
 #define AIO_SERVER      "192.168.1.4"
 #define AIO_SERVERPORT  1883                    // use 8883 for SSL
@@ -52,12 +52,7 @@ Adafruit_MQTT_Client mqtt(&client, AIO_SERVER, AIO_SERVERPORT, AIO_USERNAME, AIO
 
 // Setup feeds for publishing.
 // Notice MQTT paths for AIO follow the form: <username>/feeds/<feedname>
-Adafruit_MQTT_Publish temperature = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/room.temperature");
-Adafruit_MQTT_Publish humidity = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/room.humidity");
-Adafruit_MQTT_Publish fanStatus = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/room.fan-status");
-
-// Setup feeds for subscribing to changes.
-Adafruit_MQTT_Subscribe fanSwitch = Adafruit_MQTT_Subscribe(&mqtt, AIO_USERNAME "/feeds/room.fan-switch");
+Adafruit_MQTT_Publish mqtt_device = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/room.temperature");
 
 /****************************** DHT Sensor **********************************/
 
@@ -66,10 +61,6 @@ float hum;  // Humidity
 float temp; // Temperature
 unsigned long previousMillis = 0;
 const long interval = 2000;
-
-/****************************** Fan *****************************************/
-
-const int fanOutputPin = 0;
 
 /*************************** Sketch Code ************************************/
 
@@ -98,12 +89,6 @@ void setup() {
   Serial.println("WiFi connected");
   Serial.println("IP address: "); Serial.println(WiFi.localIP());
 
-  // Setup MQTT subscription feeds.
-  mqtt.subscribe(&fanSwitch);
-  pinMode(fanOutputPin, OUTPUT);
-  digitalWrite(fanOutputPin, LOW);  // Turn Off Fan by default.
-  fanStatus.publish("OFF");
-
   // Setup DHT Sensor.
   dht.begin();
 }
@@ -113,27 +98,6 @@ void loop() {
   // connection and automatically reconnect when disconnected).  See the MQTT_connect
   // function definition further below.
   MQTT_connect();
-
-  // this is our 'wait for incoming subscription packets' busy subloop
-  // try to spend your time here
-
-  Adafruit_MQTT_Subscribe *subscription;
-  while ((subscription = mqtt.readSubscription(5000))) {
-    if (subscription == &fanSwitch) {
-      char *value = (char *)fanSwitch.lastread;
-      fanStatus.publish(value);
-
-      String message = String(value);
-      message.trim();
-      if (message == "ON") {
-        digitalWrite(fanOutputPin, HIGH);
-        Serial.println(F("\nTurn ON Fan"));
-      } else {
-        digitalWrite(fanOutputPin, LOW);
-        Serial.println(F("\nTurn OFF Fan"));
-      }
-    }
-  }
   
   // Get current time in milliseconds.
   unsigned long currentMillis = millis();
@@ -146,33 +110,33 @@ void loop() {
     // Read data and store it to variables hum and temp.
     hum = dht.readHumidity();
     temp = dht.readTemperature();
-  }
 
-  // Publish sensor value.
-  Serial.print(F("\nSending sensor val "));
-  char payload[64] = "";
-  strcat(payload, "20;02;DKW2012;");
+    // Publish sensor value.
+    Serial.print(F("\nSending sensor val "));
+    char payload[64] = "";
+    strcat(payload, "20;02;DKW2012;");
 
-  // Convert temperature and add to payload.
-  char temp_value[32];
-  snprintf(temp_value, sizeof temp_value, "%f", temp);
-  strcat(payload, "TEMP=");
-  strcat(payload, temp_value);
-  strcat(payload, ";");
+    // Convert temperature and add to payload.
+    char temp_value[32];
+    snprintf(temp_value, sizeof temp_value, "%f", temp);
+    strcat(payload, "TEMP=");
+    strcat(payload, temp_value);
+    strcat(payload, ";");
 
-  // Convert humidity and add to payload.
-  char hum_value[32];
-  snprintf(hum_value, sizeof hum_value, "%f", hum);
-  strcat(payload, "HUM=");
-  strcat(payload, hum_value);
-  strcat(payload, ";");
+    // Convert humidity and add to payload.
+    char hum_value[32];
+    snprintf(hum_value, sizeof hum_value, "%f", hum);
+    strcat(payload, "HUM=");
+    strcat(payload, hum_value);
+    strcat(payload, ";");
 
-  Serial.print(payload);
-  Serial.print("... ");
-  if (! temperature.publish(payload)) {
-    Serial.println(F("Failed"));
-  } else {
-    Serial.println(F("OK!"));
+    Serial.print(payload);
+    Serial.print("... ");
+    if (! mqtt_device.publish(payload)) {
+      Serial.println(F("Failed"));
+    } else {
+      Serial.println(F("OK!"));
+    }
   }
 
   // ping the server to keep the mqtt connection alive
@@ -198,15 +162,17 @@ void MQTT_connect() {
 
   uint8_t retries = 3;
   while ((ret = mqtt.connect()) != 0) { // connect will return 0 for connected
-       Serial.println(mqtt.connectErrorString(ret));
-       Serial.println("Retrying MQTT connection in 5 seconds...");
-       mqtt.disconnect();
-       delay(5000);  // wait 5 seconds
-       retries--;
-       if (retries == 0) {
-         // basically die and wait for WDT to reset me
-         while (1);
-       }
+    Serial.println(mqtt.connectErrorString(ret));
+    Serial.println("Retrying MQTT connection in 5 seconds...");
+    
+    mqtt.disconnect();
+    delay(5000);  // wait 5 seconds
+    retries--;
+
+    if (retries == 0) {
+      // basically die and wait for WDT to reset me
+      while (1);
+    }
   }
   Serial.println("MQTT Connected!");
 }
